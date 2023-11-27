@@ -1,0 +1,161 @@
+create or replace PROCEDURE                 "BL_KCC_CUSTOMER_BUSCA_LOCAL" 
+(  in_CUSTOMER_NO IN number DEFAULT NULL
+  ,in_ID_SOLICITUD IN VARCHAR2 DEFAULT NULL
+  ,in_CUSTOMER_NO_FCC IN VARCHAR2 DEFAULT NULL
+  ,out_resultado OUT SYS_REFCURSOR
+) AS
+V_CUSTOMER_NUMBER_MAIN INTEGER;
+BEGIN
+--Renova
+--Aserrano: Se cambia el nombre del UDF colocandole guion bajo
+--AHernandez - 00006793 - Agregado la fecha de KYC - FECHA_KYC
+--Ahernandez - 00013297 -  20190314 - Se agregan nuevos campos para las validaciones de AML Rating
+--AALVARADO - TICKET 38757 AGREGO COLUMNAS PARA FACTURACION ELECTRONICA 2023 agosto
+--ALTER TABLE  WF_KCC_CUSTOMER_INFO ADD FE_DIRECCION VARCHAR2(150), FE_TIPO_RECEPTOR VARCHAR2(150), FE_EMAIL VARCHAR2(150), FE_COD_DIRECCION VARCHAR2(150)
+BEGIN
+      --Aserrano: Se agrega el condicional RELACIONADO IS NULL para que no retorne mas de un registro.
+      SELECT CUSTOMER_NO INTO V_CUSTOMER_NUMBER_MAIN 
+      FROM WF_KCC_CUSTOMER_INFO 
+      WHERE ID_SOLICITUD = in_ID_SOLICITUD AND MAIN_CUSTOMER = 1 AND RELACIONADO IS NULL;
+
+      EXCEPTION WHEN NO_DATA_FOUND THEN 
+      V_CUSTOMER_NUMBER_MAIN := 0; 
+END;
+
+  OPEN out_resultado FOR
+    SELECT ID_SOLICITUD,
+           CUST.CUSTOMER_NO,                    	   	CUST.SHAREHOLDER, 	              NVL(CUST.CUSTOMER_TYPE, KCT.CUSTOMER_ID) CUSTOMER_TYPE,
+           CUST.CUSTOMER_NAME1,                 			CUST.FULLNAME,               
+           CUST.TAXIDNUMBER,                   				CUST.DV,                          CUST.CUSTOMER_CATEGORY,          
+           CUST.RELATIONTYPE,                   			CUST.INDUSTRY,                    CUST.NAMEOFECONOMICGROUP,    
+           CUST.LEGALREPRESENTATIVE,           				CUST.NAMEEXTERNALAUDITORS,        CUST.NAMEINTERNATIONALRISK,
+           CUST.POSTALALINE1,                   			CUST.POSTALALINE2,                CUST.POSTALALINE3,
+           CUST.POSTALACITY,                    			CUST.PHYSICALALINE1,              CUST.PHYSICALALINE2,
+           CUST.PHYSICALALINE3,                 			CUST.TELEPHONENUMBER,             CUST.TELEPHONENUMBER2,
+           CUST.FAXNUMBER,                      			CUST.WEBSITE,                     CUST.DEFAULT_MEDIA,
+           CUST.INCORP_COUNTRYID,               			TO_CHAR(CUST.INCORP_DATE, 'dd/MON/yyyy') INCORP_DATE,                 
+           CUST.RESIDENCECOUNTRY,
+           FN_BUSCA_COUNTRY_DESCR(cUST.RESIDENCECOUNTRY) RESCTRY_DESC,
+           CUST.NATIONALITYID,                  		 	FN_BUSCA_COUNTRY_DESCR(CUST.NATIONALITYID) NATIONALITYIDDESCR,
+           CUST.RESIDENCELOCATIONID, 		 			  	    FN_BUSCA_RES_LOCATION(cUST.RESIDENCELOCATIONID) RESLOC_DESC,   
+           CUST.LANGUAGEID,									          (SELECT LANG_NAME FROM SMTB_LANGUAGE@LINK_BPMBLFCC WHERE  LANG_CODE=  CUST.LANGUAGEID)LANGUAGEID_DESC,
+           CUST.BANKTYPE,                       		  CUST.TYPEOFLICENCE,   			      CUST.SWIFT_CODE,						
+           CUST.ABACODEVALUE,                   		  CUST.COMPLIANCEOFFICER,           CUST.ADDRESSPROCESSAGENTINUSA,		
+           trim(CUST.NETWORTH)NETWORTH,               CUST.EXPOSURE_COUNTRYID, 		      FN_BUSCA_COUNTRY_DESCR(EXPOSURE_COUNTRYID) EXPCTRY_DESC, 
+           TO_CHAR(CUST.INCEPTION_DATE, 'dd/MON/yyyy') INCEPTION_DATE,								        
+           CUST.PRODUCT_SERVICE_OFFERED,        		  CUST.RELATEDCOMPANIES,            
+           CUST.EMAIL,										            CUST.NAME_ADDRESS_LEGAL_ADVISOR,     		  CUST.REFERENCE_BANKING_COMMERCIAL REFERENCE_BANKING_COMME,
+           CUST.NAME_OF_STOCK,                  			CUST.COUNTRIES_WHERE_OFFERS,     			    CUST.REGULATORY_AUTHORITY,
+           CUST.RELATEDACCOUNT,								        FN_BUSCA_COUNTRY_DESCR(CUST.INCORP_COUNTRYID) INCORP_CNTRY_DESC,		 
+           CUST.MAIN_CUSTOMER, 								        IND.CODE_DESC INDUSTRY_DESC, -- Industry Description
+           CUST.TELEPHONENUMBER || '|' || CUST.TELEPHONENUMBER2 || '|' || CUST.FAXNUMBER || '|' || CUST.WEBSITE || '|' || CUST.EMAIL TELFAXWEBEMAIL,
+           RTRIM(CUST.POSTALALINE1   || ' ' ||  CUST.POSTALALINE2   || ' ' || CUST.POSTALALINE3   || ' ' || CUST.POSTALACITY  || ' | ' || 
+           CUST.PHYSICALALINE1  || ' ' || CUST.PHYSICALALINE2  || ' ' ||  CUST.PHYSICALALINE3) ADDRESS,
+            CASE WHEN CUST.CHK_SAMESHOLDERS_MAINCUST = '1' THEN FN_KCC_BUSCA_MANAG_DIRECTORS(1,V_CUSTOMER_NUMBER_MAIN, in_ID_SOLICITUD)
+           ELSE FN_KCC_BUSCA_MANAG_DIRECTORS(1,CUST.CUSTOMER_NO, in_ID_SOLICITUD) END BOARDOFDIRECTORS,
+            CASE WHEN CUST.CHK_SAMESHOLDERS_MAINCUST = '1' THEN FN_KCC_BUSCA_MANAG_DIRECTORS(2,V_CUSTOMER_NUMBER_MAIN, in_ID_SOLICITUD)
+           ELSE FN_KCC_BUSCA_MANAG_DIRECTORS(2,CUST.CUSTOMER_NO, in_ID_SOLICITUD) END TOPMANAGEMENT,
+           CUST.CUSTOMER_NO_FCC,				                  CUST.SHORT_NAME,					CUST.LIAB_ID,				  
+           CUST.GROUP_CODE,						                    CUST.ID_SOLICITUD_LM,     CUST.ACCOUNT_OFFICERID
+           ,CUST.ADDRESSPROCESSAGENTINUSA USA_PROCESS_AGENT--MS_blx_sep09--FN_BUSCA_UDF_CLIENTE('STDCIF','USA PROCESS AGENT',CUST.CUSTOMER_NO||'~') USA_PROCESS_AGENT
+             ,NVL(CT.CUSTOMER_DESCRIPTION,                KCT.CUSTOMER_DESCRIPTION) CUSTOMER_TYPE_DESC,         CUST.ID_EXISTE_FCC
+           ,UDFD.lov_desc BankType_DESC,                  CUST.LOCATIONID,                       CUST.AML_RATINGID
+           ,DEM.description DEFAULT_MEDIA_DESC,           CUST.NY_AGENCY,                        CUST.SBP_CATEGORYID
+           ,UDFD2.lov_desc RELATIONTYPE_DESC,             CUST.CUSTOMER_CLASSIFICATION_PEP,      CUST.DESCRIPCION_PEP
+           ,CCAT.CUST_CAT_DESC CUSTOMER_CATEGORY_DESC,    CUST.INCORPORATION_PURPOSE,            ACCOFFI.CODE_DESC OFFICER_DESCRIPTION
+           ,CUST.SUB_ECOGR_CD,                            LOC.CODE_DESC LOCATION_DESCRIPTION,    AML.LOV_DESC AML_DESCRIPTION
+           ,CUST.ECONOMICGROUPRUC,                        SBP.CATEGORY_DESCRIPCION SBP_CATEGORY_DESCRIPTION,         CUST.LEGALREPRESENTATIVE_INFO
+           ,CUST.LAST_CHANGE_DATE,                        CUST.DIGNATARIES,                       CUST.POWER_DEES
+           ,CUST.CHK_CREATE_FCC,/*Add by MS*/             CUST.AUTHORIZED_SIGNATURES,             CUST.RELATION_CORRESPONSAL
+           ,CUST.CHK_SAMESHOLDERS_MAINCUST --Add by MS   
+           ,CASE WHEN CUST.CHK_SAMESHOLDERS_MAINCUST = '1' THEN FN_KCC_BUSCA_SHAREHOLDERS(V_CUSTOMER_NUMBER_MAIN, in_ID_SOLICITUD,2)
+           ELSE FN_KCC_BUSCA_SHAREHOLDERS(in_CUSTOMER_NO, in_ID_SOLICITUD,2) END SHAREHOLDERS,CUST.SALES_MORE_30_PERCENT,CUST.EXPORT_SHARE
+           ,CUST.CUSTOMER_TYPE REAL_CUSTOMER_TYPE  -- ULT_OH 27Junio2011 - Se agrega para control de impresiÃ³n de Profile en etapa inicial
+           ,CUST.AML_RATINGID_NY,                         NYC.LOV_DESC AML_DESCRIPTION_NY,      CUST.RELACIONADO  --Ult_FArauz 12Octubre2011 - Se agregan nuevos campos a la consulta.
+           ,CUST.ID_MAIN_CUSTOMER ID_MAIN_CUSTOMER,       CUST.PUBLIC_TRADE_COMP,               TO_CHAR(CUST.PATRIOT_EXC_DATE, 'dd/MON/yyyy') PATRIOT_EXC_DATE
+           ,TO_CHAR(CUST.AML_EXC_DATE, 'dd/MON/yyyy') AML_EXC_DATE
+           --,KCT.CUSTOMER_ID CUSTOMER_TYPE2
+           , (    SELECT  COUNT(*) FROM WF_KCC_CUSTOMER_INFO  CI1
+                  JOIN WF_LMT_CUSTOMER LM1 ON CI1.ID_SOLICITUD_LM  = LM1.ID_SOLICITUD  AND CI1.CUSTOMER_NO = LM1.CUSTOMER_ID
+                  WHERE  CI1.ID_SOLICITUD = CUST.ID_SOLICITUD AND CI1.CUSTOMER_NO = CUST.CUSTOMER_NO
+              ) ES_DE_LIMITE
+            --Aserrano 22Abr2015
+            --Mojo 7643585 Se solicita agregar dos campos nuevos al formulario del KYC 
+            --para indicar si el cliente cumple con la ley FATCA              
+           ,CUST.GIIN_NUMBER
+           ,TO_CHAR(CUST.W8_FORM_DATE, 'dd/MON/yyyy') W8_FORM_DATE
+           ,CASE WHEN CUST.NY_AGENCY = '1' THEN CUST.AML_RATINGID_NY
+                 WHEN CUST.NY_AGENCY = '0' THEN CUST.AML_RATINGID
+                 ELSE ''
+            END AML_RATING
+           ,CUST.FECHA_INTEG_BSARADAR
+           ,TO_CHAR(CUST.FECHA_KYC, 'dd/MON/yyyy') FECHA_KYC
+
+           --// AHernandez - 00013297
+           ,TDC.LOV_DESC TIPO_DE_CLIENTE
+           ,TDC.LOV TIPO_DE_CLIENTE_CODE
+
+           ,IC.LOV_DESC INTERNAL_CONTROL
+           ,IC.LOV INTERNAL_CONTROL_CODE
+
+           ,CUST.NEGATIVE_NEWS
+           ,CUST.SANCTIONS      
+           --// AHernandez - 00013297
+           -- 2019.09.12 bmg ticket 16689 y 17569 nuevo field covenants
+           ,cov.LOV_DESC covenants_desc
+           ,cov.LOV covenants_code
+           ,deudor_p.customer_name1 deudor_principal_desc
+           ,deudor_p.customer_no deudor_principal_code
+           ,CUST.CHK_CONTR_APROB_VF
+           -- fin 16689 y 17569
+           ,cust.cinu  --2019.11.26 bmg ticket 00016775-CINU
+           ,cat_cinu.LOV_DESC cinu_desc --2019.11.26 bmg ticket 00016775-CINU
+           ,cust.CO_OFICINA_GESTION  --ticket 32393 bmg 2023.04.04
+           ,cat_oficina.LOV_DESC DESC_OFICINA_GESTION     --ticket 32393 bmg 2023.04.04
+		   --,CUST.FE_DIRECCION		--TICKET 38757 AALVARADO
+		   --,CUST.FE_TIPO_RECEPTOR	--TICKET 38757 AALVARADO
+		   --,CUST.FE_EMAIL			--TICKET 38757 AALVARADO
+		   --,CUST.FE_COD_DIRECCION	--TICKET 38757 AALVARADO
+           ,CUST.GROUP_EXPIRATION_MONTH -- HLEE - 30-08-2023 Ticket 38930
+    FROM WF_KCC_CUSTOMER_INFO CUST
+      --LEFT JOIN DIM_CUSTOMER@LINK_BPMBLFCC DIMC                 ON  CUST.CUSTOMER_NO_FCC  = DIMC.V_CUSTOMER_CODE
+      --LEFT JOIN GLTM_MIS_CODE@LINK_BPMBLFCC IND                 ON DIMC.v_mis_code1 = IND.MIS_CODE
+      LEFT JOIN GLTM_MIS_CODE@LINK_BPMBLFCC IND                 ON CUST.INDUSTRY = IND.MIS_CODE
+      LEFT JOIN WF_KCC_CUSTOMER_TYPE CT                         ON CUST.CUSTOMER_TYPE = CT.CUSTOMER_ID    
+      LEFT JOIN cstms_function_userdef_fields@LINK_BPMBLFCC UDF ON CUST.customer_no_fcc = SUBSTR (UDF.rec_key, 1, 9)
+      LEFT JOIN udtm_lov@link_bpmblfcc UDFD                     ON UDF.FIELD_VAL_7 = UDFD.LOV AND  UDFD.field_name = 'BANK_TYPE'
+      LEFT JOIN WF_KCC_DFLT_MEDIA DEM                           ON CUST.DEFAULT_MEDIA = DEM.MEDIA
+      LEFT JOIN udtm_lov@link_bpmblfcc UDFD2                    ON CUST.RELATIONTYPE = UDFD2.LOV AND UDFD2.field_name = 'RELATION_TYPE'
+      LEFT JOIN STTM_CUSTOMER_CAT@link_bpmblfcc CCAT            ON CUST.CUSTOMER_CATEGORY = CCAT.CUST_CAT AND CCAT.record_stat = 'O' AND CCAT.auth_stat = 'A'
+      LEFT JOIN WF_LMT_CUSTOMER_TYPE CLT                        ON TRIM(CLT.CO_CUSTOMER_TYPE) = TRIM(CUST.LMT_CUSTOMER_TYPE)
+      LEFT JOIN WF_KCC_CUSTOMER_TYPE KCT                        ON KCT.CUSTOMER_ID = CLT.CO_CUSTOMER_TYPE_KCC
+      LEFT JOIN GLTM_MIS_CODE@LINK_BPMBLFCC ACCOFFI             ON ACCOFFI.MIS_CODE = CUST.ACCOUNT_OFFICERID
+      LEFT JOIN GLTM_MIS_CODE@LINK_BPMBLFCC LOC                 ON LOC.MIS_CODE = CUST.LOCATIONID
+      LEFT JOIN udtm_lov@link_bpmblfcc AML                      ON AML.LOV = CUST.AML_RATINGID AND AML.FIELD_NAME = 'AML_RISK_RATING'
+      LEFT JOIN WF_KCC_SBP_CATEGORY SBP                         ON SBP.CATEGORYID = CUST.SBP_CATEGORYID
+      --ULT_FArauz 12Octubre2011 - Se agrega para nuevo control de AML Rating NY.
+      LEFT JOIN udtm_lov@link_bpmblfcc NYC                      ON NYC.LOV = CUST.AML_RATINGID_NY AND NYC.FIELD_NAME = 'AML_RISK_RATING'
+      --// AHernandez - 00013297
+      LEFT JOIN udtm_lov@link_bpmblfcc TDC                      ON TDC.LOV = CUST.TIPO_DE_CLIENTE AND TDC.FIELD_NAME = 'TIPO DE CLIENTE'
+      LEFT JOIN udtm_lov@link_bpmblfcc IC                      ON IC.LOV = CUST.INTERNAL_CONTROL AND IC.FIELD_NAME = 'INTERNAL_CONTROL'
+      --2019.09.12 bmg ticket 16689 y 17569 nuevo field
+      LEFT JOIN udtm_lov@link_bpmblfcc cov                      ON cov.LOV = cust.co_covenants AND cov.FIELD_NAME = 'COVENANTS CIF'
+      left join STTM_CUSTOMER@LINK_BPMBLFCC deudor_p on cust.co_deudor_principal = deudor_p.customer_no
+      -- fin 16689 y 17569
+      LEFT JOIN udtm_lov@link_bpmblfcc cat_cinu                 ON cust.cinu = cat_cinu.LOV  AND cat_cinu.FIELD_NAME = 'COD_ACTIVIDAD_CINU'
+      LEFT JOIN UDTM_LOV@LINK_BPMBLFCC cat_oficina              ON cust.co_oficina_gestion = cat_oficina.LOV AND cat_oficina.FIELD_NAME = 'OFICINA_DE_GESTION'
+    WHERE 
+      cust.CUSTOMER_NO = NVL(IN_CUSTOMER_NO , cust.CUSTOMER_NO)   AND
+      ID_SOLICITUD = NVL(IN_ID_SOLICITUD, ID_SOLICITUD) AND 
+      CUST.LMT_CUSTOMER_TYPE <> 'G' AND  -- AH - AGREGADO PARA QUE NO MUESTRE LOS GRUPOS EN ESTA PANTALLA
+      (CUSTOMER_NO_FCC = nvl(in_CUSTOMER_NO_FCC, CUSTOMER_NO_FCC) OR NVL(CUSTOMER_NO_FCC, 'XXXXXXXXX')= NVL(IN_CUSTOMER_NO_FCC, 'XXXXXXXXX'))
+       ORDER BY CUST.MAIN_CUSTOMER DESC;
+       --ORDER BY CUST.id_solicitud asc; -- 20100628 - AH - Posible soluciÃ³n al problema que no salen los datos recientes de un cliente
+
+
+/*EXCEPTION WHEN NO_DATA_FOUND THEN 
+
+  OPEN out_resultado FOR
+  SELECT 'No Hay Registros para este Customer Number' resultado, '0' valor from dual;*/
+
+END BL_KCC_CUSTOMER_BUSCA_LOCAL;

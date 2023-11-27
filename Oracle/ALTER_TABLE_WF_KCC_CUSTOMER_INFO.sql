@@ -1,0 +1,3 @@
+
+        alter table WF_KCC_CUSTOMER_INFO add GROUP_EXPIRATION_MONTH NUMBER;
+   
